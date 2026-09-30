@@ -5,7 +5,32 @@
 ![Hardware](https://img.shields.io/badge/Hardware-MFRC522%20%7C%20Servo-blue?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-Eine automatisierte Zutrittskontrolle auf Basis eines **Arduino** und des **RFID-RC522-Moduls**. Das System liest RFID-Transponder (Karten/Chips) über den SPI-Bus aus, validiert die hinterlegten UIDs und steuert bei Berechtigung einen Servomotor als elektronische Türverriegelung an.
+Eine automatisierte Zutrittskontrolle auf Basis eines **Arduino Nano (ATmega328P)** und des **RFID-RC522-Moduls**. Das System liest RFID-Transponder (Karten/Chips) über den SPI-Bus aus, validiert die hinterlegten UIDs und steuert bei Berechtigung einen Servomotor als elektronische Türverriegelung an.
+
+## 🔄 Programmablauf (Flussdiagramm)
+
+```mermaid
+flowchart TD
+    Start([Systemstart]) --> Init[Hardware-Init: SPI, RC522, Servo auf 0°]
+    Init --> Loop{RFID-Tag erkannt?}
+    
+    Loop -- Nein --> Loop
+    Loop -- Ja --> ReadUID[UID des Transponders einlesen]
+    
+    ReadUID --> CheckUID{Stimmt UID mit<br/>ALLOWED_UID überein?}
+    
+    CheckUID -- JA --> AccessOK[Status: ZUGRIFF ERLAUBT]
+    AccessOK --> OpenDoor[Grüne LED AN<br/>Servo auf 90° öffnen]
+    
+    CheckUID -- NEIN --> AccessDenied[Status: ZUGRIFF VERWEIGERT]
+    AccessDenied --> Alarm[Rote LED AN<br/>Piezo-Warnton ausgeben]
+    
+    OpenDoor --> Delay[1.5 Sekunden Verzögerung]
+    Alarm --> Delay
+    
+    Delay --> ResetDoor[Servo auf 0° sperren<br/>LEDs AUS]
+    ResetDoor --> Loop
+```
 
 ---
 
