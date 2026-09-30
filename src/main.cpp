@@ -1,37 +1,32 @@
-/*
-* File:        main.cpp P1
-* Autor:       Ibrahim AL SAEED
-* Datum:       03.01.2026
-* Version:     1.0
-* Lizenz:      MIT
-
-* Description: Dieses Programm ist ein einfacher Türscanner, wie er in Schulen, Firmen usw. verwendet werden kann.
-*/
-
-// TODO Fileheader fehlt
-// TODO Flussdiagramm fehlt
-// Kein separates Unterverzeichnis benötigt - habe ich bereits entfernt - befindet sich jetzt im Hauptverzeichnis des Repos
-// TODO Die Readme hat mich ein wenig verwirrt - Sie verwenden einen Arduino Nano?
-// Freue mich schon auf die Livedemo!
-
-
+/**
+ * @file       main.cpp
+ * @brief      Smarte RFID-Zutrittskontrolle (Türscanner) mit Servo & Signalisierung
+ * @author     Ibrahim AL SAEED
+ * @date       2026-01-03
+ * @version    1.1
+ * @license    MIT
+ * 
+ * Hardware:   Arduino Nano (ATmega328P), RFID-RC522 (SPI), SG90 Servo, Status-LEDs, Piezo
+ */
 
 #include <SPI.h>
 #include <MFRC522.h>
 #include <Servo.h>
 
-#define SS_PIN 10
-#define RST_PIN 9
+// ================= Pin-Definitionen =================
+constexpr uint8_t PIN_SS       = 10;   // SPI Slave Select (SDA)
+constexpr uint8_t PIN_RST      = 9;    // RC522 Reset
+constexpr uint8_t PIN_SERVO    = 7;    // PWM-Steuersignal für Servomotor
+constexpr uint8_t PIN_LED_RED  = 6;    // Rote Status-LED (Zugriff verweigert)
+constexpr uint8_t PIN_PIEZO    = 6;    // Piezo-Summer (Warnton)
+constexpr uint8_t PIN_LED_GRN  = 5;    // Grüne Status-LED (Zugriff erlaubt)
 
-MFRC522 rfid(SS_PIN, RST_PIN);
-Servo myServo;
+// ================= Globale Instanzen =================
+MFRC522 rfid(PIN_SS, PIN_RST);
+Servo doorServo;
 
-#define servoPin 7	// TODO bei PINs sollte es eine const Variable sein oder ein #define
-#define piezopin 6
-
-// Erlaubte RFID-Karte
-byte allowedUID[4] = {0x33, 0xDF, 0x6D, 0xE2};
-
+// Autorisierte RFID-Transponder-UID (z. B. Mifare Classic)
+const byte ALLOWED_UID[4] = {0x33, 0xDF, 0x6D, 0xE2};
 
 void setup()
 {
@@ -39,71 +34,67 @@ void setup()
   SPI.begin();
   rfid.PCD_Init();
 
-  myServo.attach(servoPin);
-  myServo.write(0);
+  doorServo.attach(PIN_SERVO);
+  doorServo.write(0); // Tür verriegelt (0 Grad)
 
-  pinMode(piezopin, OUTPUT);
-  pinMode(5, OUTPUT);   
-  pinMode(6, OUTPUT);   
+  pinMode(PIN_LED_GRN, OUTPUT);
+  pinMode(PIN_LED_RED, OUTPUT);
 
-  Serial.println("RFID Access Control bereit...");
+  Serial.println(F("========================================"));
+  Serial.println(F(" Smart RFID Access Control bereit...   "));
+  Serial.println(F("========================================"));
 }
-
 
 void loop()
 {
-  // Warten auf neue Karte
-  if (!rfid.PICC_IsNewCardPresent()) 
-  return;
+  // Warten, bis ein RFID-Tag vor das Lesegerät gehalten wird
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial())
+  {
+    return;
+  }
 
-  if (!rfid.PICC_ReadCardSerial()) 
-  return;
+  Serial.print(F("Karte erkannt. UID: "));
+  bool accessGranted = true;
 
-  Serial.print("Karte erkannt. UID: ");
-
-  bool match = true;
-
-  // UID vergleichen
+  // Eingelesene UID mit autorisierter UID vergleichen
   for (byte i = 0; i < rfid.uid.size; i++)
   {
+    if (rfid.uid.uidByte[i] < 0x10) Serial.print(F("0"));
     Serial.print(rfid.uid.uidByte[i], HEX);
-    Serial.print(" ");
+    Serial.print(F(" "));
 
-    if (rfid.uid.uidByte[i] != allowedUID[i])
+    if (rfid.uid.uidByte[i] != ALLOWED_UID[i])
     {
-     match = false;
+      accessGranted = false;
     }
   }
-
   Serial.println();
 
-
-  // Entscheidung
-  if (match)
+  // Zutrittsauswertung
+  if (accessGranted)
   {
-    Serial.println("ZUGRIFF ERLAUBT!");
-    digitalWrite(5, HIGH);   
-    digitalWrite(6, LOW);    
-    myServo.write(90);       
+    Serial.println(F(">> ZUGRIFF ERLAUBT: Tür wird entriegelt."));
+    digitalWrite(PIN_LED_GRN, HIGH);
+    digitalWrite(PIN_LED_RED, LOW);
+    doorServo.write(90); // Schloss öffnen (90 Grad)
   }
-
   else
-
   {
-    Serial.println("ZUGRIFF VERWEIGERT!");
-    digitalWrite(5, LOW);
-    digitalWrite(6, HIGH);   
-    tone(piezopin, 400, 200);
+    Serial.println(F(">> ZUGRIFF VERWEIGERT: Ungültige UID!"));
+    digitalWrite(PIN_LED_GRN, LOW);
+    digitalWrite(PIN_LED_RED, HIGH);
+    tone(PIN_PIEZO, 400, 200); // 400 Hz Alarmton für 200 ms
   }
 
-
-  // Karte abmelden
+  // Tag in den Ruhezustand versetzen
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
 
+  // Schließverzögerung: Tür bleibt 1.5 Sekunden offen
   delay(1500);
 
-  // Servo zurücksetzen
- 
-  myServo.write(0);
+  // Status zurücksetzen & Tür wieder verriegeln
+  doorServo.write(0);
+  digitalWrite(PIN_LED_GRN, LOW);
+  digitalWrite(PIN_LED_RED, LOW);
 }
